@@ -43,7 +43,7 @@ services:
       /usr/local/bin/mc mb myminio/${MINIO_BUCKET_NAME} || echo 'El bucket ya existe';
       
       echo 'Configurando políticas de acceso...';
-      /usr/local/bin/mc policy set ${BUCKET_POLICY} myminio/${MINIO_BUCKET_NAME};
+      /usr/local/bin/mc anonymous set ${BUCKET_POLICY} myminio/${MINIO_BUCKET_NAME};
       
       echo 'Configuración completada exitosamente';
       "
@@ -98,7 +98,7 @@ services:
       setup:
         condition: service_completed_successfully
     volumes:
-      - ./python:/app
+      - ./app:/app  # Updated to match the correct directory
     working_dir: /app
     environment:
       - MINIO_SERVER=http://minio:9000
