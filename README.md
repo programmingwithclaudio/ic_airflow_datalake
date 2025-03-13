@@ -44,5 +44,18 @@ docker volume prune -f
 docker image prune -a -f
 docker system prune -a --volumes -f
 ```
+---
+```bash
+# escribir directamente
+docker exec -it spark-master /bin/bash
+# escribir en local
+pip install pyspark
+from pyspark.sql import SparkSession
 
+spark = SparkSession.builder \
+    .master("spark://localhost:7077") \
+    .appName("MiAplicacion") \
+    .getOrCreate()
+spark-submit --master spark://localhost:7077 mi_script.py
 
+```

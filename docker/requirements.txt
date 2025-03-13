@@ -1,0 +1,10 @@
+apache-airflow
+scikit-learn
+pandas
+numpy
+pyarrow
+boto3
+minio
+pyspark
+sqlalchemy
+psycopg2
