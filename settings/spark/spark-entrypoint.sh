@@ -7,10 +7,8 @@ SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-1}
 SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-1g}
 SPARK_DRIVER_MEMORY=${SPARK_DRIVER_MEMORY:-1g}
 SPARK_EXECUTOR_MEMORY=${SPARK_EXECUTOR_MEMORY:-1g}
-SPARK_MASTER_HOST=${SPARK_MASTER_HOST:-spark-master}
-SPARK_MASTER_PORT=${SPARK_MASTER_PORT:-7077}
-SPARK_MASTER_WEBUI_PORT=${SPARK_MASTER_WEBUI_PORT:-8080}
-SPARK_MODE=${SPARK_MODE:-master}
+SPARK_WORKER_WEBUI_PORT=${SPARK_WORKER_WEBUI_PORT:-8081}
+SPARK_MODE=${SPARK_MODE:-worker}
 
 # Configurar Spark para S3/MinIO
 export SPARK_HOME=/opt/spark
@@ -31,11 +29,11 @@ cat > $HADOOP_CONF_DIR/core-site.xml <<EOF
     </property>
     <property>
         <name>fs.s3a.access.key</name>
-        <value>Nt1BR5NXbgVh4AqOA7BX</value>
+        <value>minioadmin</value>
     </property>
     <property>
         <name>fs.s3a.secret.key</name>
-        <value>weKIbuVXkywzHNjEmz04C8KarTjJr7jUTebczC4j</value>
+        <value>minioadmin</value>
     </property>
     <property>
         <name>fs.s3a.path.style.access</name>
@@ -45,20 +43,29 @@ cat > $HADOOP_CONF_DIR/core-site.xml <<EOF
         <name>fs.s3a.impl</name>
         <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
     </property>
+    <property>
+        <name>fs.s3a.connection.ssl.enabled</name>
+        <value>false</value>
+    </property>
 </configuration>
 EOF
 
 echo "Configured core-site.xml for MinIO/S3 access"
 
 # Arrancar según el modo especificado
-# Reemplaza la verificación de disponibilidad del master con este código
-if [ "$SPARK_MODE" = "master" ]; then
-    echo "Starting Spark master..."
-    # Con estas líneas:
-    /opt/spark/sbin/start-master.sh --host $SPARK_MASTER_HOST --port $SPARK_MASTER_PORT --webui-port $SPARK_MASTER_WEBUI_PORT
+if [ "$SPARK_MODE" = "worker" ]; then
+    echo "Starting Spark worker..."
+    # Verificar que el master esté disponible antes de iniciar el worker
+    until nc -z spark-master 7077; do
+        echo "Waiting for Spark Master to be available..."
+        sleep 2
+    done
+    
+    /opt/spark/sbin/start-worker.sh $SPARK_MASTER_URL \
+        --webui-port $SPARK_WORKER_WEBUI_PORT \
+        --cores $SPARK_WORKER_CORES \
+        --memory $SPARK_WORKER_MEMORY
+    
     # Mantener el contenedor en ejecución
-    tail -f /opt/spark/logs/spark--org.apache.spark.deploy.master.Master-1-*.out
-    # Mantener el script en ejecución
     tail -f /opt/spark/logs/spark--org.apache.spark.deploy.worker.Worker-*.out
 fi
-

@@ -31,7 +31,7 @@ docker logs -f python-client
    - Contraseña: `adminpassword`  
 
 ---
-
+# https://github.com/AhmetFurkanDEMIR/airflow-spark-kafka-example/blob/main/docker/airflow/start-airflow.sh
 ```bash
 docker-compose down -v
 docker-compose up --build -d
@@ -39,7 +39,7 @@ docker stop $(docker ps -q)
 
 docker rm $(docker ps -aq)
 docker volume rm $(docker volume ls -q)
-docker network rm $(docker network ls -q)
+docker network prune
 docker system prune
 docker system prune --volumes
 docker-compose down --volumes --remove-orphans
@@ -76,6 +76,24 @@ docker stop 62e7996b9bab
 docker-compose rm -f spark-worker
 docker rm 62e7996b9bab
 docker-compose up -d spark-worker
+
+#
+docker-compose logs -f
+
+#
+docker-compose up -d zookeeper kafka postgres redis airflow minio
+docker-compose up -d spark-master spark-worker-1 python-producer python-consumer
+
+#
+bash project-structure.sh
+
+docker-compose up -d postgres redis minio zookeeper kafka
+
+docker-compose up -d airflow-init airflow-webserver airflow-scheduler
+
+docker-compose up -d spark-master spark-worker
+
+
 ```
 
 
@@ -98,7 +116,7 @@ spark = SparkSession.builder \
 spark-submit --master spark://localhost:7077 docker/main.py
 
 ```
-```
+```bash
 docker exec -it --user root airflow_webserver bash
 chmod -R 777 /opt/airflow/data
 sudo chmod -R 777 ./data
@@ -108,6 +126,7 @@ chmod -R 777 /opt/airflow/data
 sudo chmod -R 777 input output checkpoint
 ```
 
+```bash
 docker exec -it postgres_airflow bash
 psql -U airflow -d airflow
 \dt
@@ -122,3 +141,4 @@ CREATE TABLE my_new_table (
 
 docker exec -it spark-master bash
 docker-compose build spark-master spark-worker
+```

@@ -5,11 +5,10 @@ x-airflow-common: &airflow-common
   environment: &airflow-common-env
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    # Clave Fernet correctamente formateada
-    AIRFLOW__CORE__FERNET_KEY: '81HqDtbqAywKSOumSha3BhWNOdQ26slT6K0YaZeZyPs='
+    AIRFLOW__CORE__FERNET_KEY: A8B9cDeFgHiJkLmNoPqRsTuVwXyZ0123456789=
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    AIRFLOW__WEBSERVER__SECRET_KEY: 'a7e25af65a2ba79a1e0ea5c795781e4023da192e7f8c43c69fd323c6bf634c8f'
+    AIRFLOW__WEBSERVER__SECRET_KEY: 'your_secret_key_here'
     # Configuración para MinIO
     AIRFLOW_CONN_MINIO_DEFAULT: 'minio://minioadmin:minioadmin@minio:9000'
     # Configuración para Spark
@@ -51,7 +50,6 @@ services:
       interval: 5s
       retries: 5
       timeout: 30s
-    restart: unless-stopped
 
   redis:
     image: redis:latest
@@ -65,12 +63,11 @@ services:
       interval: 5s
       timeout: 30s
       retries: 5
-    restart: unless-stopped
 
   minio:
     image: minio/minio:latest
     container_name: minio
-    restart: unless-stopped
+    restart: always
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -98,7 +95,6 @@ services:
       - ALLOW_ANONYMOUS_LOGIN=yes
     networks:
       - bigdata-network
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "2181"]
       interval: 10s
@@ -115,103 +111,30 @@ services:
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - ALLOW_PLAINTEXT_LISTENER=yes
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     networks:
       - bigdata-network
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Airflow Services
-  airflow-init:
-    <<: *airflow-common
-    container_name: airflow-init
-    entrypoint: /bin/bash
-    command:
-      - -c
-      - |
-        # Espera a que postgres esté disponible
-        while ! nc -z postgres 5432; do 
-          echo 'Esperando a PostgreSQL...' 
-          sleep 2
-        done
-        
-        pip install --user -r /opt/airflow/requirements/requirements.txt || echo "No requirements file found, continuing..."
-        
-        # Inicializar la base de datos
-        echo "Inicializando base de datos de Airflow..."
-        airflow db init
-        
-        echo "Creando usuario admin..."
-        airflow users create \
-          --role Admin \
-          --username admin \
-          --password admin \
-          --firstname Admin \
-          --lastname Admin \
-          --email admin@example.com || echo "Usuario ya existe"
-        
-        # Crear conexiones
-        echo "Configurando conexiones..."
-        airflow connections add 'spark_default' \
-          --conn-type 'spark' \
-          --conn-host 'spark-master' \
-          --conn-port '7077' || echo "Conexión spark_default ya existe"
-          
-        airflow connections add 'minio_default' \
-          --conn-type 's3' \
-          --conn-login 'minioadmin' \
-          --conn-password 'minioadmin' \
-          --conn-host 'minio' \
-          --conn-port '9000' \
-          --conn-extra '{"endpoint_url": "http://minio:9000"}' || echo "Conexión minio_default ya existe"
-          
-        airflow connections add 'kafka_default' \
-          --conn-type 'kafka' \
-          --conn-host 'kafka' \
-          --conn-port '9092' || echo "Conexión kafka_default ya existe"
-        
-        echo "Inicialización completada"
-        exit 0
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8089:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
     depends_on:
-      - postgres
+      - kafka
     networks:
       - bigdata-network
 
-  airflow-webserver:
-    <<: *airflow-common
-    container_name: airflow-webserver
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    depends_on:
-      - airflow-init
-    command: bash -c "pip install --user -r /opt/airflow/requirements/requirements.txt 2>/dev/null || echo 'No requirements file' && airflow webserver"
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-
-  airflow-scheduler:
-    <<: *airflow-common
-    container_name: airflow-scheduler
-    restart: unless-stopped
-    depends_on:
-      - airflow-init
-    command: bash -c "pip install --user -r /opt/airflow/requirements/requirements.txt 2>/dev/null || echo 'No requirements file' && airflow scheduler"
-    healthcheck:
-      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-
-  # Spark Services (solo cuando los necesites)
+  # Capa de Procesamiento - Spark
   spark-master:
     image: bitnami/spark:3.3.0
     container_name: spark-master
@@ -228,7 +151,6 @@ services:
       - ./data:/opt/bitnami/spark/data
     networks:
       - bigdata-network
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081"]
       interval: 10s
@@ -250,7 +172,124 @@ services:
       - ./data:/opt/bitnami/spark/data
     networks:
       - bigdata-network
-    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "3g"
+
+  # Capa de Orquestación - Airflow
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        pip install --user -r /opt/airflow/requirements/requirements.txt
+        
+        function check_db() {
+          airflow db check
+          return $?
+        }
+        
+        while ! nc -z postgres 5432; do 
+          echo 'Esperando a PostgreSQL...' 
+          sleep 2
+        done
+        
+        if ! check_db; then
+          echo "Inicializando base de datos de Airflow..."
+          airflow db init
+          airflow db upgrade
+          airflow users create \
+            --role Admin \
+            --username admin \
+            --password admin \
+            --firstname Admin \
+            --lastname Admin \
+            --email admin@example.com
+          
+          # Crear conexiones para Spark y MinIO
+          airflow connections add 'spark_default' \
+            --conn-type 'spark' \
+            --conn-host 'spark-master' \
+            --conn-port '7077'
+            
+          airflow connections add 'minio_default' \
+            --conn-type 's3' \
+            --conn-login 'minioadmin' \
+            --conn-password 'minioadmin' \
+            --conn-host 'minio' \
+            --conn-port '9000'
+            
+          airflow connections add 'kafka_default' \
+            --conn-type 'kafka' \
+            --conn-host 'kafka' \
+            --conn-port '9092'
+        else
+          echo "Base de datos de Airflow ya inicializada"
+        fi
+        
+        echo "Inicialización completada"
+        exit 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bigdata-network
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    command: bash -c "pip install --user -r /opt/airflow/requirements/requirements.txt && airflow webserver"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    command: bash -c "pip install --user -r /opt/airflow/requirements/requirements.txt && airflow scheduler"
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Capa de Observabilidad
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8088:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - bigdata-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "500M"
 
 volumes:
   postgres_data:

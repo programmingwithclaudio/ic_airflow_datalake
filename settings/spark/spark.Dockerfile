@@ -8,7 +8,7 @@ RUN curl --location https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/
     curl --location https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar --output /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar
 
 # Copiar el entrypoint script y asignar la propiedad a 'spark'
-COPY --chown=spark:spark docker/spark-entrypoint.sh /opt/entrypoint.sh
+COPY --chown=spark:spark settings/spark/spark-entrypoint.sh /opt/entrypoint.sh
 # Cambiar permisos (ejecutado como root para asegurarnos de que se puede)
 RUN chmod +x /opt/entrypoint.sh
 
