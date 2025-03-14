@@ -3,3 +3,5 @@ s3fs_mount/
 setup_scripts/
 .env
 test.md
+__pycache__/
+data/

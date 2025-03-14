@@ -35,19 +35,37 @@ docker logs -f python-client
 ```bash
 docker-compose down -v
 docker-compose up --build -d
+docker stop $(docker ps -q)
+
 docker rm $(docker ps -aq)
 docker volume rm $(docker volume ls -q)
+docker network rm $(docker network ls -q)
 docker system prune
 docker system prune --volumes
 docker-compose down --volumes --remove-orphans
 docker volume prune -f
 docker image prune -a -f
 docker system prune -a --volumes -f
+#check airflow
+docker logs airflow_init
+docker exec -it airflow_webserver airflow users create --role Admin --username admin --password admin --firstname Admin --lastname Admin --email admin@example.com
+docker exec -it airflow_webserver airflow db check
+
+
+#
+
+docker-compose down --rmi all
+docker-compose build --no-cache
+docker-compose up
 ```
 ---
 ```bash
+sudo pacman -S pybind11
+pkg-config --modversion pybind11
 # escribir directamente
 docker exec -it spark-master /bin/bash
+sudo chmod -R 777 dags plugins spark data
+mkdir -p spark data/input data/output data/checkpoint
 # escribir en local
 pip install pyspark
 from pyspark.sql import SparkSession
@@ -56,6 +74,30 @@ spark = SparkSession.builder \
     .master("spark://localhost:7077") \
     .appName("MiAplicacion") \
     .getOrCreate()
-spark-submit --master spark://localhost:7077 mi_script.py
+spark-submit --master spark://localhost:7077 docker/main.py
 
 ```
+```
+docker exec -it --user root airflow_webserver bash
+chmod -R 777 /opt/airflow/data
+sudo chmod -R 777 ./data
+mkdir -p spark data/input data/output data/checkpoint
+
+chmod -R 777 /opt/airflow/data
+sudo chmod -R 777 input output checkpoint
+```
+
+docker exec -it postgres_airflow bash
+psql -U airflow -d airflow
+\dt
+
+CREATE TABLE my_new_table (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+\d 
+
+docker exec -it spark-master bash
+docker-compose build spark-master spark-worker

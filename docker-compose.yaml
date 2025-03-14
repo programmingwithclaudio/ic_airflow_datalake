@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3'
 
 services:
   postgres:
@@ -10,6 +10,14 @@ services:
       POSTGRES_DB: airflow
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - spark-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
 
   minio:
     image: minio/minio:latest
@@ -24,59 +32,137 @@ services:
     command: server /data --console-address ":9090"
     volumes:
       - minio_storage:/data
+    networks:
+      - spark-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: docker/airflow.Dockerfile
+    container_name: airflow_init
+    entrypoint: >
+      /bin/bash -c "
+      while ! nc -z postgres 5432; do echo 'Waiting for PostgreSQL...'; sleep 2; done;
+      airflow db init &&
+      airflow db upgrade &&
+      airflow users create --role Admin --username admin --password admin --firstname Admin --lastname Admin --email admin@example.com"
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=A8B9cDeFgHiJkLmNoPqRsTuVwXyZ0123456789=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    depends_on:
+      - postgres
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+      - ./dags:/opt/airflow/dags
+      - ./plugins:/opt/airflow/plugins
+      - ./spark:/opt/airflow/spark
+      - ./data:/opt/airflow/data
+    restart: "no"
+    networks:
+      - spark-network
 
   airflow-webserver:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/airflow.Dockerfile
     container_name: airflow_webserver
     restart: always
     environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - AIRFLOW__CORE__FERNET_KEY=supersecretkey
+      - AIRFLOW__CORE__FERNET_KEY=A8B9cDeFgHiJkLmNoPqRsTuVwXyZ0123456789=
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
     volumes:
+      - airflow_logs:/opt/airflow/logs
       - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
+      - ./spark:/opt/airflow/spark
+      - ./data:/opt/airflow/data
     ports:
       - "8080:8080"
     depends_on:
       - postgres
+      - airflow-init
     command: webserver
+    networks:
+      - spark-network
 
   airflow-scheduler:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/airflow.Dockerfile
     container_name: airflow_scheduler
     restart: always
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=A8B9cDeFgHiJkLmNoPqRsTuVwXyZ0123456789=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
     volumes:
+      - airflow_logs:/opt/airflow/logs
       - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
+      - ./spark:/opt/airflow/spark
+      - ./data:/opt/airflow/data
     depends_on:
       - airflow-webserver
     command: scheduler
+    networks:
+      - spark-network
 
   spark-master:
-    image: bitnami/spark:latest
+    build:
+      context: .
+      dockerfile: docker/spark.Dockerfile
     container_name: spark-master
     environment:
       - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8081
     ports:
       - "7077:7077"
       - "8081:8081"
+    volumes:
+      - ./spark:/opt/spark/work
+      - ./data:/opt/spark/data
+    networks:
+      - spark-network
+    restart: always
 
   spark-worker:
-    image: bitnami/spark:latest
+    build:
+      context: .
+      dockerfile: docker/spark.Dockerfile
     container_name: spark-worker
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
     depends_on:
       - spark-master
+    volumes:
+      - ./spark:/opt/spark/work
+      - ./data:/opt/spark/data
+    networks:
+      - spark-network
+    restart: always
 
 volumes:
+  postgres_data:
   minio_storage:
+  airflow_logs:
+
+networks:
+  spark-network:
+    driver: bridge
