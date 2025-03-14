@@ -135,6 +135,7 @@ services:
       - ./data:/opt/spark/data
     networks:
       - spark-network
+    command: bash -c "/opt/entrypoint.sh && tail -f /dev/null"
     restart: always
 
   spark-worker:
@@ -156,6 +157,7 @@ services:
       - ./data:/opt/spark/data
     networks:
       - spark-network
+    command: bash -c "/opt/entrypoint.sh && tail -f /dev/null"
     restart: always
 
 volumes:

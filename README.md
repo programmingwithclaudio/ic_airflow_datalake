@@ -57,7 +57,28 @@ docker exec -it airflow_webserver airflow db check
 docker-compose down --rmi all
 docker-compose build --no-cache
 docker-compose up
+
+
+#
+
+docker-compose down
+docker-compose build spark-master
+docker-compose up -d
+
+#
+docker-compose stop spark-master
+docker-compose rm -f spark-master
+docker-compose up -d spark-master --no-deps --build
+
+#
+docker-compose stop spark-worker
+docker stop 62e7996b9bab
+docker-compose rm -f spark-worker
+docker rm 62e7996b9bab
+docker-compose up -d spark-worker
 ```
+
+
 ---
 ```bash
 sudo pacman -S pybind11
