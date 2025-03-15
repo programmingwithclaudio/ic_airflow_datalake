@@ -93,10 +93,15 @@ docker-compose up -d airflow-init airflow-webserver airflow-scheduler
 
 docker-compose up -d spark-master spark-worker
 
+#
+visudo
+%wheel ALL=(ALL:ALL) ALL
+useradd -m -s /bin/bash si
+passwd si
 
 ```
-
-
+[http://localhost:9001/login](http://localhost:9001/login)
+[http://localhost:8080/](http://localhost:8080/)
 ---
 ```bash
 sudo pacman -S pybind11
