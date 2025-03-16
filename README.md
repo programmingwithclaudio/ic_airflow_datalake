@@ -42,7 +42,6 @@ Este proyecto implementa una arquitectura de datos completa que orquesta el proc
    ```
 ---
 ### Referencias
--  Claudio Ica,2025.
 
 - "Designing Data-Intensive Applications" (Martin Kleppmann, 2017)
 
